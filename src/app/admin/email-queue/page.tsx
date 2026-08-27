@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
-import { ArrowLeft, Send, Trash2, Pencil, Save, X, Mail } from 'lucide-react'
+import { ArrowLeft, Send, Trash2, Pencil, Save, X, Mail, Eye } from 'lucide-react'
 
 interface Email {
   id: string
@@ -33,6 +33,17 @@ export default function EmailQueueAdmin() {
   const [editBody, setEditBody] = useState('')
   const [busy, setBusy] = useState(false)
   const [adminEmail, setAdminEmail] = useState('')
+  const [preview, setPreview] = useState<{ html: string; subject: string } | null>(null)
+
+  const handlePreview = async (id: string) => {
+    setBusy(true); setMessage('Loading preview…')
+    try {
+      const res = await fetch(`/api/email-preview?id=${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${await token()}` } })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || 'Could not load preview')
+      setPreview({ html: json.html, subject: json.subject }); setMessage('')
+    } catch (err) { setMessage(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`) } finally { setBusy(false) }
+  }
 
   useEffect(() => {
     loadEmails()
@@ -154,6 +165,7 @@ export default function EmailQueueAdmin() {
                         <p style={styles.date}>{new Date(email.created_at).toLocaleString()}</p>
                       </div>
                       <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        <button onClick={() => handlePreview(email.id)} disabled={busy} style={styles.previewBtn} title="Preview this email"><Eye size={15} /> Preview</button>
                         <button onClick={() => handleTest(email.id)} disabled={busy} style={styles.testBtn} title="Send a test copy to yourself"><Mail size={15} /> Send test</button>
                         {email.status === 'draft' && <>
                           {!email.html_body && <button onClick={() => startEdit(email)} style={styles.editBtn} title="Edit draft"><Pencil size={15} /> Edit</button>}
@@ -169,6 +181,18 @@ export default function EmailQueueAdmin() {
           </div>
         )}
       </main>
+
+      {preview && (
+        <div style={styles.overlay} onClick={() => setPreview(null)}>
+          <div style={styles.modalBox} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHead}>
+              <span style={{ fontWeight: 700, fontSize: 14, color: '#1f2937', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Preview — {preview.subject}</span>
+              <button onClick={() => setPreview(null)} style={styles.iconBtn} title="Close"><X size={18} /></button>
+            </div>
+            <iframe title="Email preview" srcDoc={preview.html} style={styles.iframe} />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -193,6 +217,12 @@ const styles: Record<string, React.CSSProperties> = {
   hint: { fontSize: 12, color: '#9ca3af', marginTop: 8 },
   editBtn: { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: '#eef3f8', color: '#2a5680', border: '1px solid #cfd8e3', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600 },
   testBtn: { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600 },
+  previewBtn: { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: '#eef3f8', color: '#2a5680', border: '1px solid #cfd8e3', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600 },
+  overlay: { position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 50 },
+  modalBox: { background: '#fff', borderRadius: 12, width: '100%', maxWidth: 680, height: '86vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.35)' },
+  modalHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 16px', borderBottom: '1px solid #e5e7eb' },
+  iconBtn: { background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', flexShrink: 0 },
+  iframe: { flex: 1, width: '100%', border: 'none', background: '#f4f6f9' },
   sendBtn: { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: '#059669', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600 },
   saveBtn: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', background: '#059669', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14, fontWeight: 600 },
   cancelBtn: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 14px', background: '#e5e7eb', color: '#374151', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14 },
