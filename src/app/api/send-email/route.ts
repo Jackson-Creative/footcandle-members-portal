@@ -4,7 +4,7 @@
 // ════════════════════════════════════════════════════════════════════
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { sendQueued } from '@/lib/email'
+import { sendQueued, sendQueuedTest } from '@/lib/email'
 import { SUPABASE_URL, SUPABASE_ANON } from '@/lib/supabaseConfig'
 import { isAdmin } from '@/lib/admin'
 
@@ -22,10 +22,14 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
   if (!isAdmin(user.email)) return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
 
-  const { id } = await req.json().catch(() => ({}))
+  const { id, testEmail } = await req.json().catch(() => ({}))
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
 
   try {
+    if (testEmail) {
+      const sent = await sendQueuedTest(id, testEmail)
+      return NextResponse.json({ ok: true, sent, test: true })
+    }
     const sent = await sendQueued(id)
     return NextResponse.json({ ok: true, sent })
   } catch (e) {

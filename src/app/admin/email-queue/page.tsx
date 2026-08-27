@@ -3,13 +3,14 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
-import { ArrowLeft, Send, Trash2, Pencil, Save, X } from 'lucide-react'
+import { ArrowLeft, Send, Trash2, Pencil, Save, X, Mail } from 'lucide-react'
 
 interface Email {
   id: string
   email_type: string
   subject: string
   body: string
+  html_body: string | null
   status: string
   recipient_email: string | null
   recipient_filter: string | null
@@ -31,10 +32,26 @@ export default function EmailQueueAdmin() {
   const [editSubject, setEditSubject] = useState('')
   const [editBody, setEditBody] = useState('')
   const [busy, setBusy] = useState(false)
+  const [adminEmail, setAdminEmail] = useState('')
 
-  useEffect(() => { loadEmails() }, [])
+  useEffect(() => {
+    loadEmails()
+    supabase.auth.getUser().then((u) => setAdminEmail(u.data.user?.email || ''))
+  }, [])
 
   async function token() { const { data } = await supabase.auth.getSession(); return data.session?.access_token || '' }
+
+  const handleTest = async (id: string) => {
+    const to = prompt('Send a test copy of this email to which address?', adminEmail)
+    if (!to) return
+    setBusy(true); setMessage('Sending test…')
+    try {
+      const res = await fetch('/api/send-email', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` }, body: JSON.stringify({ id, testEmail: to }) })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || 'Test failed')
+      setMessage(`✓ Test sent to ${to}. (The draft was not sent to anyone else.)`)
+    } catch (err) { setMessage(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`) } finally { setBusy(false) }
+  }
 
   const loadEmails = async () => {
     try {
@@ -136,9 +153,10 @@ export default function EmailQueueAdmin() {
                         <p style={styles.preview}>{(email.body || '').replace(/\s+/g, ' ').slice(0, 160)}{(email.body || '').length > 160 ? '…' : ''}</p>
                         <p style={styles.date}>{new Date(email.created_at).toLocaleString()}</p>
                       </div>
-                      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                      <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        <button onClick={() => handleTest(email.id)} disabled={busy} style={styles.testBtn} title="Send a test copy to yourself"><Mail size={15} /> Send test</button>
                         {email.status === 'draft' && <>
-                          <button onClick={() => startEdit(email)} style={styles.editBtn} title="Edit draft"><Pencil size={15} /> Edit</button>
+                          {!email.html_body && <button onClick={() => startEdit(email)} style={styles.editBtn} title="Edit draft"><Pencil size={15} /> Edit</button>}
                           <button onClick={() => handleSend(email.id)} disabled={busy} style={styles.sendBtn}><Send size={15} /> Send</button>
                         </>}
                         <button onClick={() => handleDelete(email.id)} disabled={busy} style={styles.deleteBtn} title="Delete"><Trash2 size={15} /></button>
@@ -174,6 +192,7 @@ const styles: Record<string, React.CSSProperties> = {
   input: { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 14 },
   hint: { fontSize: 12, color: '#9ca3af', marginTop: 8 },
   editBtn: { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: '#eef3f8', color: '#2a5680', border: '1px solid #cfd8e3', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600 },
+  testBtn: { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600 },
   sendBtn: { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: '#059669', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600 },
   saveBtn: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', background: '#059669', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14, fontWeight: 600 },
   cancelBtn: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 14px', background: '#e5e7eb', color: '#374151', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14 },

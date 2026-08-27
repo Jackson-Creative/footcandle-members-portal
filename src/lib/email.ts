@@ -194,3 +194,23 @@ export async function sendQueued(id: string): Promise<number> {
   await admin().from('email_queue').update({ status: 'sent', sent_at: new Date().toISOString() }).eq('id', id)
   return sent
 }
+
+// Send a queued email to ONE test address only (does not touch the row's
+// status or audience). Personalizes using that address's member record if any.
+export async function sendQueuedTest(id: string, testEmail: string): Promise<number> {
+  if (!BREVO_API_KEY) throw new Error('Server is missing BREVO_API_KEY.')
+  const email = (testEmail || '').trim().toLowerCase()
+  if (!email.includes('@')) throw new Error('Enter a valid test email address.')
+  const { data: row, error } = await admin().from('email_queue').select('*').eq('id', id).single()
+  if (error || !row) throw new Error('Email not found')
+
+  const ctx = (await resolveRecipients({ recipient_email: email }))[0] || { email }
+  const html = row.html_body ? renderEmail(personalizeHtml(row.html_body, ctx)) : renderEmail(personalizeBody(row.body || '', ctx))
+  const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: { 'api-key': BREVO_API_KEY, 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ sender: { name: SENDER_NAME, email: SENDER_EMAIL }, subject: `[TEST] ${row.subject}`, htmlContent: html, textContent: row.body || 'test', to: [{ email }] }),
+  })
+  if (!res.ok) throw new Error(`Brevo error (${res.status}): ${await res.text()}`)
+  return 1
+}
