@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
-import { ArrowLeft, Plus, Save, Trash2, X, Eye, EyeOff, Calendar } from 'lucide-react'
+import { ArrowLeft, Plus, Save, Trash2, X, Eye, EyeOff, Calendar, Upload } from 'lucide-react'
 
 type DateRow = { id: string; screening_date: string; screening_time: string | null; venue: string | null; location_city: string | null; address: string | null }
 type Film = {
@@ -29,6 +29,7 @@ export default function ManageFilmScreenings() {
   const [form, setForm] = useState<Partial<Film>>({})
   const [newDate, setNewDate] = useState<any>(emptyDate)
   const [busy, setBusy] = useState(false)
+  const [uploading, setUploading] = useState(false)
 
   useEffect(() => {
     ;(async () => {
@@ -69,6 +70,20 @@ export default function ManageFilmScreenings() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   function cancel() { setEditId(null); setForm({}); setNewDate(emptyDate) }
+
+  // Upload a replacement poster to the film-posters bucket and point the form at
+  // its public URL. Still requires "Save changes" to persist to the film record.
+  async function uploadPoster(file: File) {
+    setUploading(true); setMsg(null)
+    try {
+      const fileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
+      const { error: upErr } = await supabase.storage.from('film-posters').upload(fileName, file)
+      if (upErr) throw new Error(upErr.message)
+      const { data: { publicUrl } } = supabase.storage.from('film-posters').getPublicUrl(fileName)
+      setForm((prev) => ({ ...prev, poster_url: publicUrl }))
+      setMsg({ text: 'Poster uploaded — click “Save changes” to apply it.', ok: true })
+    } catch (e) { setMsg({ text: e instanceof Error ? e.message : 'Upload failed', ok: false }) } finally { setUploading(false) }
+  }
 
   async function saveFilm() {
     if (!editId) return
@@ -143,7 +158,18 @@ export default function ManageFilmScreenings() {
               <F label="Title" span2><input style={s.input} value={form.title ?? ''} onChange={(e) => setForm({ ...form, title: e.target.value })} /></F>
               <F label="Rating"><input style={s.input} value={form.rating ?? ''} onChange={(e) => setForm({ ...form, rating: e.target.value })} /></F>
               <F label="Running time"><input style={s.input} value={form.running_time ?? ''} onChange={(e) => setForm({ ...form, running_time: e.target.value })} /></F>
-              <F label="Poster image URL" span2><input style={s.input} value={form.poster_url ?? ''} onChange={(e) => setForm({ ...form, poster_url: e.target.value })} /></F>
+              <F label="Poster image" span2>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  {form.poster_url ? <img src={form.poster_url} alt="" style={{ width: 60, height: 'auto', borderRadius: 5, border: '1px solid #e5e7eb', flexShrink: 0 }} /> : null}
+                  <div style={{ flex: 1, minWidth: 220 }}>
+                    <input style={s.input} placeholder="Paste an image URL, or upload a file below" value={form.poster_url ?? ''} onChange={(e) => setForm({ ...form, poster_url: e.target.value })} />
+                    <label style={{ ...s.secondaryBtn, display: 'inline-flex', marginTop: 8, cursor: uploading ? 'default' : 'pointer', opacity: uploading ? 0.6 : 1 }}>
+                      <Upload size={14} /> {uploading ? 'Uploading…' : 'Upload new poster'}
+                      <input type="file" accept="image/*" hidden disabled={uploading} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadPoster(f); e.currentTarget.value = '' }} />
+                    </label>
+                  </div>
+                </div>
+              </F>
               <F label="Trailer URL (YouTube/Vimeo)" span2><input style={s.input} value={form.trailer_url ?? ''} onChange={(e) => setForm({ ...form, trailer_url: e.target.value })} /></F>
               <F label="Short description" span2><textarea rows={2} style={{ ...s.input, resize: 'vertical' }} value={form.description ?? ''} onChange={(e) => setForm({ ...form, description: e.target.value })} /></F>
               <F label="About the film" span2><textarea rows={4} style={{ ...s.input, resize: 'vertical' }} value={form.about_film ?? ''} onChange={(e) => setForm({ ...form, about_film: e.target.value })} /></F>
