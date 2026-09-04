@@ -1,6 +1,7 @@
 // Admin-only management of film screenings + their dates (service role).
-// PATCH: edit a film's fields.  DELETE ?id=…: delete a film (dates cascade).
-// POST: add a screening date.   DELETE ?dateId=…: delete one screening date.
+// PATCH {id}: edit a film's fields.  PATCH {dateId}: edit one screening date.
+// POST: add a screening date.   DELETE ?id=…: delete a film (dates cascade).
+// DELETE ?dateId=…: delete one screening date.
 import { NextRequest, NextResponse } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@supabase/supabase-js'
@@ -35,8 +36,16 @@ function guard() {
 export async function PATCH(req: NextRequest) {
   const g = guard(); if (g) return g
   if (!(await requireAdmin(req))) return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
-  const { id, updates } = await req.json().catch(() => ({}))
-  if (!id || !updates) return NextResponse.json({ error: 'id and updates required' }, { status: 400 })
+  const { id, dateId, updates } = await req.json().catch(() => ({}))
+  if (!updates) return NextResponse.json({ error: 'updates required' }, { status: 400 })
+  // dateId → update one screening date; id → update a film's fields.
+  if (dateId) {
+    const { data, error } = await admin().from('screening_dates').update(clean(updates, DATE_FIELDS)).eq('id', dateId).select().single()
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    refreshPublic()
+    return NextResponse.json({ date: data })
+  }
+  if (!id) return NextResponse.json({ error: 'id or dateId required' }, { status: 400 })
   const { data, error } = await admin().from('film_screenings').update(clean(updates, FILM_FIELDS)).eq('id', id).select().single()
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
   refreshPublic()

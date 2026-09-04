@@ -115,6 +115,14 @@ export default function ManageFilmScreenings() {
     } catch (e) { setMsg({ text: e instanceof Error ? e.message : 'Failed', ok: false }) } finally { setBusy(false) }
   }
 
+  async function toggleCC(d: DateRow) {
+    setBusy(true); setMsg(null)
+    try {
+      await api('PATCH', { dateId: d.id, updates: { closed_captioned: !d.closed_captioned } })
+      await load()
+    } catch (e) { setMsg({ text: e instanceof Error ? e.message : 'Failed', ok: false }) } finally { setBusy(false) }
+  }
+
   async function deleteDate(dateId: string) {
     setBusy(true); setMsg(null)
     try {
@@ -180,11 +188,18 @@ export default function ManageFilmScreenings() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {(editing.screening_dates || []).slice().sort((a, b) => a.screening_date.localeCompare(b.screening_date)).map((d) => (
                 <div key={d.id} style={s.dateRow}>
-                  <span style={{ fontSize: 14 }}>
-                    {fmt(d.screening_date, d.screening_time)} — {[d.venue, d.location_city].filter(Boolean).join(', ')}
-                    {d.closed_captioned && <span style={s.ccPill}>CC · Closed Captioned</span>}
-                  </span>
-                  <button onClick={() => deleteDate(d.id)} disabled={busy} style={s.trashBtn} title="Remove this date"><Trash2 size={14} /></button>
+                  <span style={{ fontSize: 14 }}>{fmt(d.screening_date, d.screening_time)} — {[d.venue, d.location_city].filter(Boolean).join(', ')}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                    <button
+                      onClick={() => toggleCC(d)}
+                      disabled={busy}
+                      style={d.closed_captioned ? s.ccToggleOn : s.ccToggleOff}
+                      title={d.closed_captioned ? 'Closed Captioned — click to turn off' : 'Mark this showtime Closed Captioned'}
+                    >
+                      {d.closed_captioned ? 'CC · Closed Captioned' : '+ Closed Captioned'}
+                    </button>
+                    <button onClick={() => deleteDate(d.id)} disabled={busy} style={s.trashBtn} title="Remove this date"><Trash2 size={14} /></button>
+                  </div>
                 </div>
               ))}
               {(!editing.screening_dates || editing.screening_dates.length === 0) && <p style={{ color: '#9ca3af', fontSize: 14 }}>No dates yet.</p>}
@@ -254,7 +269,8 @@ const s: Record<string, React.CSSProperties> = {
   dateRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, background: '#f9fafb', border: '1px solid #eef1f5', borderRadius: 8, padding: '8px 12px' },
   filmRow: { display: 'flex', alignItems: 'center', gap: 14, background: 'white', borderRadius: 10, boxShadow: '0 1px 3px rgba(0,0,0,0.08)', padding: '12px 14px', marginBottom: 10 },
   hiddenPill: { fontSize: 11, fontWeight: 600, color: '#92400e', background: '#fef3c7', borderRadius: 999, padding: '2px 8px' },
-  ccPill: { fontSize: 11, fontWeight: 700, color: '#8a5a00', background: '#fdf0d5', border: '1px solid #e6b34d', borderRadius: 6, padding: '1px 7px', marginLeft: 8, whiteSpace: 'nowrap' },
+  ccToggleOn: { fontSize: 11, fontWeight: 700, color: '#8a5a00', background: '#fdf0d5', border: '1px solid #e6b34d', borderRadius: 6, padding: '4px 9px', whiteSpace: 'nowrap', cursor: 'pointer' },
+  ccToggleOff: { fontSize: 11, fontWeight: 600, color: '#9ca3af', background: '#fff', border: '1px dashed #cbd5e1', borderRadius: 6, padding: '4px 9px', whiteSpace: 'nowrap', cursor: 'pointer' },
   primaryBtn: { display: 'flex', alignItems: 'center', gap: 6, padding: '10px 18px', background: '#059669', color: 'white', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 600, cursor: 'pointer' },
   secondaryBtn: { display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px', background: '#e5e7eb', color: '#374151', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer' },
   iconBtn: { background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', padding: 4 },
