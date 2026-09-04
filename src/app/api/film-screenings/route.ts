@@ -15,7 +15,7 @@ function refreshPublic() {
 }
 
 const FILM_FIELDS = ['title', 'poster_url', 'description', 'about_film', 'rating', 'running_time', 'trailer_url', 'published'] as const
-const DATE_FIELDS = ['screening_date', 'screening_time', 'venue', 'location_city', 'address'] as const
+const DATE_FIELDS = ['screening_date', 'screening_time', 'venue', 'location_city', 'address', 'closed_captioned'] as const
 
 async function requireAdmin(req: NextRequest) {
   const token = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '')

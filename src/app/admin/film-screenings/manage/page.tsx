@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { ArrowLeft, Plus, Save, Trash2, X, Eye, EyeOff, Calendar, Upload } from 'lucide-react'
 
-type DateRow = { id: string; screening_date: string; screening_time: string | null; venue: string | null; location_city: string | null; address: string | null }
+type DateRow = { id: string; screening_date: string; screening_time: string | null; venue: string | null; location_city: string | null; address: string | null; closed_captioned?: boolean | null }
 type Film = {
   id: string; title: string; description: string | null; about_film: string | null; poster_url: string | null
   rating: string | null; running_time: string | null; trailer_url: string | null; published: boolean
@@ -19,7 +19,7 @@ function fmt(dateStr: string, timeStr?: string | null) {
   const [h, m] = timeStr.split(':')
   return `${day} · ${((+h + 11) % 12) + 1}:${m} ${+h >= 12 ? 'PM' : 'AM'}`
 }
-const emptyDate = { screening_date: '', screening_time: '', venue: '', location_city: '', address: '' }
+const emptyDate = { screening_date: '', screening_time: '', venue: '', location_city: '', address: '', closed_captioned: false }
 
 export default function ManageFilmScreenings() {
   const [films, setFilms] = useState<Film[]>([])
@@ -45,7 +45,7 @@ export default function ManageFilmScreenings() {
     setLoading(true)
     const { data, error } = await supabase
       .from('film_screenings')
-      .select('id,title,description,about_film,poster_url,rating,running_time,trailer_url,published,screening_dates(id,screening_date,screening_time,venue,location_city,address)')
+      .select('id,title,description,about_film,poster_url,rating,running_time,trailer_url,published,screening_dates(*)')
       .order('created_at', { ascending: false })
     if (error) setMsg({ text: error.message, ok: false })
     setFilms((data as Film[]) || [])
@@ -180,7 +180,10 @@ export default function ManageFilmScreenings() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {(editing.screening_dates || []).slice().sort((a, b) => a.screening_date.localeCompare(b.screening_date)).map((d) => (
                 <div key={d.id} style={s.dateRow}>
-                  <span style={{ fontSize: 14 }}>{fmt(d.screening_date, d.screening_time)} — {[d.venue, d.location_city].filter(Boolean).join(', ')}</span>
+                  <span style={{ fontSize: 14 }}>
+                    {fmt(d.screening_date, d.screening_time)} — {[d.venue, d.location_city].filter(Boolean).join(', ')}
+                    {d.closed_captioned && <span style={s.ccPill}>CC · Closed Captioned</span>}
+                  </span>
                   <button onClick={() => deleteDate(d.id)} disabled={busy} style={s.trashBtn} title="Remove this date"><Trash2 size={14} /></button>
                 </div>
               ))}
@@ -191,6 +194,9 @@ export default function ManageFilmScreenings() {
               <input type="time" style={{ ...s.input, width: 'auto' }} value={newDate.screening_time} onChange={(e) => setNewDate({ ...newDate, screening_time: e.target.value })} />
               <input placeholder="Venue" style={{ ...s.input, width: 130 }} value={newDate.venue} onChange={(e) => setNewDate({ ...newDate, venue: e.target.value })} />
               <input placeholder="City" style={{ ...s.input, width: 110 }} value={newDate.location_city} onChange={(e) => setNewDate({ ...newDate, location_city: e.target.value })} />
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#374151', whiteSpace: 'nowrap' }}>
+                <input type="checkbox" checked={!!newDate.closed_captioned} onChange={(e) => setNewDate({ ...newDate, closed_captioned: e.target.checked })} /> Closed Captioned
+              </label>
               <button onClick={addDate} disabled={busy} style={s.secondaryBtn}><Calendar size={14} /> Add date</button>
             </div>
 
@@ -248,6 +254,7 @@ const s: Record<string, React.CSSProperties> = {
   dateRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, background: '#f9fafb', border: '1px solid #eef1f5', borderRadius: 8, padding: '8px 12px' },
   filmRow: { display: 'flex', alignItems: 'center', gap: 14, background: 'white', borderRadius: 10, boxShadow: '0 1px 3px rgba(0,0,0,0.08)', padding: '12px 14px', marginBottom: 10 },
   hiddenPill: { fontSize: 11, fontWeight: 600, color: '#92400e', background: '#fef3c7', borderRadius: 999, padding: '2px 8px' },
+  ccPill: { fontSize: 11, fontWeight: 700, color: '#8a5a00', background: '#fdf0d5', border: '1px solid #e6b34d', borderRadius: 6, padding: '1px 7px', marginLeft: 8, whiteSpace: 'nowrap' },
   primaryBtn: { display: 'flex', alignItems: 'center', gap: 6, padding: '10px 18px', background: '#059669', color: 'white', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 600, cursor: 'pointer' },
   secondaryBtn: { display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px', background: '#e5e7eb', color: '#374151', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer' },
   iconBtn: { background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', padding: 4 },

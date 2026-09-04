@@ -11,6 +11,7 @@ interface ScreeningDate {
   venue: string
   location_city: string
   address: string
+  closed_captioned: boolean
 }
 
 export default function FilmScreeningsAdmin() {
@@ -26,7 +27,7 @@ export default function FilmScreeningsAdmin() {
   const [posterFile, setPosterFile] = useState<File | null>(null)
   const [posterPreview, setPosterPreview] = useState<string>('')
   const [screeningDates, setScreeningDates] = useState<ScreeningDate[]>([
-    { screening_date: '', screening_time: '', venue: '', location_city: '', address: '' }
+    { screening_date: '', screening_time: '', venue: '', location_city: '', address: '', closed_captioned: false }
   ])
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
@@ -70,7 +71,7 @@ export default function FilmScreeningsAdmin() {
     }
   }
 
-  const handleDateChange = (index: number, field: string, value: string) => {
+  const handleDateChange = (index: number, field: string, value: string | boolean) => {
     const newDates = [...screeningDates]
     newDates[index] = { ...newDates[index], [field]: value }
     setScreeningDates(newDates)
@@ -79,7 +80,7 @@ export default function FilmScreeningsAdmin() {
   const addScreeningDate = () => {
     setScreeningDates([
       ...screeningDates,
-      { screening_date: '', screening_time: '', venue: '', location_city: '', address: '' }
+      { screening_date: '', screening_time: '', venue: '', location_city: '', address: '', closed_captioned: false }
     ])
   }
 
@@ -144,7 +145,8 @@ export default function FilmScreeningsAdmin() {
         screening_time: d.screening_time,
         venue: d.venue,
         location_city: d.location_city,
-        address: d.address || null
+        address: d.address || null,
+        closed_captioned: d.closed_captioned
       }))
 
       const { error: datesError } = await supabase
@@ -164,7 +166,7 @@ export default function FilmScreeningsAdmin() {
       })
       setPosterFile(null)
       setPosterPreview('')
-      setScreeningDates([{ screening_date: '', screening_time: '', venue: '', location_city: '', address: '' }])
+      setScreeningDates([{ screening_date: '', screening_time: '', venue: '', location_city: '', address: '', closed_captioned: false }])
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Unknown error'
       setMessage(`❌ Error: ${errorMsg}`)
@@ -361,6 +363,15 @@ export default function FilmScreeningsAdmin() {
                       style={styles.input}
                     />
                   </div>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: '#374151', cursor: 'pointer', margin: '4px 0 6px' }}>
+                    <input
+                      type="checkbox"
+                      checked={date.closed_captioned}
+                      onChange={(e) => handleDateChange(index, 'closed_captioned', e.target.checked)}
+                    />
+                    Closed Captioned (all dialogue shown on screen)
+                  </label>
 
                   {screeningDates.length > 1 && (
                     <button

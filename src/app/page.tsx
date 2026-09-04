@@ -20,7 +20,7 @@ const TINT = '#eef3f8'
 const INK = '#1f2937'
 const MUTED = '#5b6472'
 
-type DateRow = { screening_date: string; screening_time: string | null; venue: string | null; location_city: string | null; address: string | null }
+type DateRow = { screening_date: string; screening_time: string | null; venue: string | null; location_city: string | null; address: string | null; closed_captioned?: boolean | null }
 type Film = { id: string; title: string; description: string | null; poster_url: string | null; rating: string | null; running_time: string | null; screening_dates: DateRow[] | null }
 type Community = { id: string; title: string; description: string | null; poster_url: string | null; event_date: string; event_time: string | null; venue: string | null; location_city: string | null; host_org: string | null; link_url: string | null }
 
@@ -39,7 +39,7 @@ function dateKey(d: DateRow) { return d.screening_date + (d.screening_time || ''
 async function getFeaturedScreening(): Promise<{ film: Film; dates: DateRow[] } | null> {
   const { data, error } = await supabase
     .from('film_screenings')
-    .select('id,title,description,poster_url,rating,running_time,screening_dates(screening_date,screening_time,venue,location_city,address)')
+    .select('id,title,description,poster_url,rating,running_time,screening_dates(*)')
     .eq('published', true)
   if (error || !data) return null
   let best: { film: Film; soonest: string } | null = null
@@ -57,6 +57,16 @@ async function getCommunityEvents(): Promise<Community[]> {
   const { data, error } = await supabase.from('community_events').select('*').eq('published', true).gte('event_date', today()).order('event_date').limit(6)
   if (error || !data) return []
   return data as Community[]
+}
+
+// Small "Closed Captioned" indicator shown under a screening that has captions.
+function CCBadge() {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 12, fontWeight: 700, color: '#8a5a00', background: '#fdf0d5', border: '1px solid #e6b34d', borderRadius: 6, padding: '3px 9px', letterSpacing: 0.2 }}>
+      <span style={{ fontWeight: 800, background: '#8a5a00', color: '#fdf0d5', borderRadius: 3, padding: '0 4px', fontSize: 11, lineHeight: '16px' }}>CC</span>
+      Closed Captioned
+    </span>
+  )
 }
 
 export default async function Home() {
@@ -98,6 +108,7 @@ export default async function Home() {
                       <div style={{ color: MUTED, fontSize: 14, marginTop: 2 }}>
                         {[d.venue, d.location_city].filter(Boolean).join(' · ')}{d.address ? ` — ${d.address}` : ''}
                       </div>
+                      {d.closed_captioned && <CCBadge />}
                     </div>
                   ))}
                 </div>

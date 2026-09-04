@@ -10,7 +10,7 @@ const BRAND = '#2a5680'
 const INK = '#1f2937'
 const MUTED = '#5b6472'
 
-type DateRow = { screening_date: string; screening_time: string | null; venue: string | null; location_city: string | null; address: string | null }
+type DateRow = { screening_date: string; screening_time: string | null; venue: string | null; location_city: string | null; address: string | null; closed_captioned?: boolean | null }
 type Film = {
   id: string; title: string; description: string | null; about_film: string | null; poster_url: string | null
   rating: string | null; running_time: string | null; trailer_url: string | null; published: boolean
@@ -39,7 +39,7 @@ function trailerEmbed(url: string | null): string | null {
 async function getFilm(id: string): Promise<Film | null> {
   const { data, error } = await supabase
     .from('film_screenings')
-    .select('id,title,description,about_film,poster_url,rating,running_time,trailer_url,published,screening_dates(screening_date,screening_time,venue,location_city,address)')
+    .select('id,title,description,about_film,poster_url,rating,running_time,trailer_url,published,screening_dates(*)')
     .eq('id', id)
     .maybeSingle()
   if (error || !data) return null
@@ -85,6 +85,12 @@ export default async function FilmPage({ params }: { params: { id: string } }) {
                     <div key={i} style={{ background: '#f7f9fc', border: '1px solid #dbe3ec', borderRadius: 10, padding: '14px 16px' }}>
                       <div style={{ fontWeight: 700, color: BRAND }}>{fmtLong(d.screening_date, d.screening_time)}</div>
                       <div style={{ color: MUTED, fontSize: 14, marginTop: 3 }}>{[d.venue, d.location_city].filter(Boolean).join(' · ')}{d.address ? ` — ${d.address}` : ''}</div>
+                      {d.closed_captioned && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 12, fontWeight: 700, color: '#8a5a00', background: '#fdf0d5', border: '1px solid #e6b34d', borderRadius: 6, padding: '3px 9px', letterSpacing: 0.2 }}>
+                          <span style={{ fontWeight: 800, background: '#8a5a00', color: '#fdf0d5', borderRadius: 3, padding: '0 4px', fontSize: 11, lineHeight: '16px' }}>CC</span>
+                          Closed Captioned
+                        </span>
+                      )}
                     </div>
                   ))}
                   {(!film.screening_dates || film.screening_dates.length === 0) && (
