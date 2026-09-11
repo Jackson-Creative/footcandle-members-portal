@@ -57,6 +57,7 @@ export async function GET(req: NextRequest) {
           receipt_url: c.receipt_url,
           membership_type: local?.membership_type || null,
           is_subscription: local?.is_subscription ?? null,
+          method: 'stripe',
           can_auto_revert: !!local && !local.refunded, // we have a snapshot to restore
           reverted_on_refund: local?.reverted_on_refund ?? false,
         }
@@ -65,6 +66,19 @@ export async function GET(req: NextRequest) {
       stripeError = e instanceof Error ? e.message : 'Stripe lookup failed'
     }
   }
+
+  // In-person renewals (cash/check at the door) — recorded by the "Renew"
+  // button, not in Stripe — so the history is a complete audit trail.
+  const inPerson = (localPays || []).filter((p: any) => p.billing_reason === 'in_person').map((p: any) => ({
+    id: `local:${p.id}`, payment_intent: null,
+    created: Math.floor(new Date(p.created_at).getTime() / 1000),
+    amount_cents: p.amount_cents ?? null, currency: p.currency || 'usd',
+    status: 'in_person', paid: true, refunded: false, amount_refunded_cents: 0,
+    description: 'In-person renewal', receipt_url: null,
+    membership_type: p.membership_type || null, is_subscription: false,
+    method: 'in_person', can_auto_revert: false, reverted_on_refund: false,
+  }))
+  payments = [...payments, ...inPerson].sort((a, b) => (b.created || 0) - (a.created || 0))
 
   // Email history — sends addressed to this member (by id or matching email).
   let emailQuery = db.from('email_log').select('id,subject,email_type,sent_at,source,email').order('sent_at', { ascending: false }).limit(500)

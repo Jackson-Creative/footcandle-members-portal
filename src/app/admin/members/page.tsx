@@ -192,7 +192,7 @@ export default function MembersManager() {
     setMsg(null)
     try {
       const updates = { renewal_date: plusOneYear(m.renewal_date), status: 'active', expired_date: null }
-      const { member } = await apiWrite('PATCH', { id: m.id, updates })
+      const { member } = await apiWrite('PATCH', { id: m.id, updates, logRenewal: true })
       setMembers((prev) => prev.map((x) => (x.id === m.id ? member : x)))
       setMsg({ text: `${member.full_name} renewed through ${fmtDate(member.renewal_date)}.`, ok: true })
     } catch (e) {

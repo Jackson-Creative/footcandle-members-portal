@@ -57,15 +57,37 @@ function guard() {
   return null
 }
 
-// Update one member by id.
+// Update one member by id. Pass logRenewal:true (the "Renew" button) to also
+// record an in-person renewal in membership_payments as an audit entry.
 export async function PATCH(req: NextRequest) {
   const g = guard(); if (g) return g
   const denied = await requireAdmin(req); if (denied) return denied
-  const { id, updates } = await req.json().catch(() => ({}))
+  const { id, updates, logRenewal } = await req.json().catch(() => ({}))
   if (!id || !updates) return NextResponse.json({ error: 'id and updates are required' }, { status: 400 })
+
+  // Snapshot the pre-renewal state for the audit record.
+  let prev: any = null
+  if (logRenewal) {
+    const { data: before } = await admin().from('members').select('status,renewal_date,expired_date,autorenew,membership_type').eq('id', id).maybeSingle()
+    prev = before
+  }
+
   const patch = { ...clean(updates), updated_at: new Date().toISOString() }
   const { data, error } = await admin().from('members').update(patch).eq('id', id).select().single()
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+  if (logRenewal && data) {
+    // Best-effort: an in-person renewal is cash/check at the door — no Stripe
+    // charge and no known amount, so we just log the event for the history.
+    try {
+      await admin().from('membership_payments').insert({
+        member_id: id, email: data.email, billing_reason: 'in_person', is_subscription: false,
+        membership_type: data.membership_type || prev?.membership_type || null, amount_cents: null,
+        prev_status: prev?.status ?? null, prev_renewal_date: prev?.renewal_date ?? null, prev_expired_date: prev?.expired_date ?? null, prev_autorenew: prev?.autorenew ?? null,
+        new_status: data.status ?? null, new_renewal_date: data.renewal_date ?? null, new_expired_date: data.expired_date ?? null, new_autorenew: data.autorenew ?? null,
+      })
+    } catch { /* audit log is best-effort */ }
+  }
   return NextResponse.json({ member: data })
 }
 

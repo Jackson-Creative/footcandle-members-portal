@@ -10,7 +10,7 @@ type Payment = {
   id: string; payment_intent: string | null; created: number; amount_cents: number; currency: string
   status: string; paid: boolean; refunded: boolean; amount_refunded_cents: number; description: string | null
   receipt_url: string | null; membership_type: string | null; is_subscription: boolean | null
-  can_auto_revert: boolean; reverted_on_refund: boolean
+  method?: string; can_auto_revert: boolean; reverted_on_refund: boolean
 }
 type EmailRow = { id: string; subject: string | null; email_type: string | null; sent_at: string; source: string; email: string }
 type Member = { id: string; full_name: string; email: string | null; status: string | null; membership_type: string | null; renewal_date: string | null; expired_date: string | null; autorenew: boolean }
@@ -113,8 +113,8 @@ export default function MemberDetail() {
           <h2 style={s.h2}><CreditCard size={18} /> Order &amp; Payment History</h2>
           {stripeError && <p style={s.warn}>Couldn’t reach Stripe: {stripeError}</p>}
           {payments.length === 0 ? (
-            <p style={s.empty}>No online payments on record.{' '}
-              <span style={{ color: '#9ca3af' }}>In-person “Mark renewed” renewals aren’t recorded as orders.</span>
+            <p style={s.empty}>No payments or renewals on record yet.{' '}
+              <span style={{ color: '#9ca3af' }}>Online payments and in-person renewals both appear here going forward.</span>
             </p>
           ) : (
             <div style={{ overflowX: 'auto' }}>
@@ -124,22 +124,32 @@ export default function MemberDetail() {
                 </tr></thead>
                 <tbody>
                   {payments.map((p) => {
+                    const inPerson = p.method === 'in_person'
                     const fullyRefunded = p.refunded || (p.amount_refunded_cents >= p.amount_cents && p.amount_cents > 0)
                     return (
                       <tr key={p.id} style={{ borderBottom: '1px solid #eee' }}>
                         <td style={s.td}>{dt(p.created)}</td>
-                        <td style={s.td}>{money(p.amount_cents, p.currency)}{p.is_subscription ? <span style={s.tag}>auto-renew</span> : null}</td>
+                        <td style={s.td}>
+                          {p.amount_cents != null ? money(p.amount_cents, p.currency) : <span style={{ color: '#9ca3af' }}>—</span>}
+                          {p.is_subscription ? <span style={s.tag}>auto-renew</span> : null}
+                        </td>
                         <td style={{ ...s.td, color: '#6b7280' }}>{p.membership_type || p.description || '—'}</td>
                         <td style={s.td}>
-                          {fullyRefunded
-                            ? <span style={{ ...s.pill, background: '#fee2e2', color: '#991b1b' }}>Refunded</span>
-                            : p.amount_refunded_cents > 0
-                              ? <span style={{ ...s.pill, background: '#fef3c7', color: '#92400e' }}>Partial refund</span>
-                              : <span style={{ ...s.pill, background: '#d1fae5', color: '#065f46' }}>Paid</span>}
+                          {inPerson
+                            ? <span style={{ ...s.pill, background: '#e0e7ff', color: '#3730a3' }}>In person</span>
+                            : fullyRefunded
+                              ? <span style={{ ...s.pill, background: '#fee2e2', color: '#991b1b' }}>Refunded</span>
+                              : p.amount_refunded_cents > 0
+                                ? <span style={{ ...s.pill, background: '#fef3c7', color: '#92400e' }}>Partial refund</span>
+                                : <span style={{ ...s.pill, background: '#d1fae5', color: '#065f46' }}>Paid</span>}
                         </td>
                         <td style={{ ...s.td, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                          {p.receipt_url && <a href={p.receipt_url} target="_blank" rel="noopener noreferrer" style={s.linkBtn} title="Stripe receipt"><ExternalLink size={13} /></a>}
-                          {!fullyRefunded && <button onClick={() => refund(p)} disabled={busy} style={s.refundBtn} title="Refund this payment"><RotateCcw size={13} /> Refund</button>}
+                          {inPerson
+                            ? <span style={{ color: '#9ca3af', fontSize: 13 }}>Recorded manually</span>
+                            : <>
+                                {p.receipt_url && <a href={p.receipt_url} target="_blank" rel="noopener noreferrer" style={s.linkBtn} title="Stripe receipt"><ExternalLink size={13} /></a>}
+                                {!fullyRefunded && <button onClick={() => refund(p)} disabled={busy} style={s.refundBtn} title="Refund this payment"><RotateCcw size={13} /> Refund</button>}
+                              </>}
                         </td>
                       </tr>
                     )
