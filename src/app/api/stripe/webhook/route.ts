@@ -26,8 +26,10 @@ function pretty(dateStr: string) {
 }
 
 type Person = { id?: string; email?: string; name?: string; tier?: string }
+// What we know about the money behind an activation, for the payment record.
+type PayInfo = { paymentIntent: string | null; charge: string | null; amountCents: number | null; billingReason: string }
 
-async function activateOne(p: Person, householdId: string | null, isSub: boolean, customer: string | null, subscription: string | null) {
+async function activateOne(p: Person, householdId: string | null, isSub: boolean, customer: string | null, subscription: string | null, pay: PayInfo) {
   const db = admin()
   const mail = (p.email || '').trim().toLowerCase()
   let member: any = null
@@ -37,6 +39,13 @@ async function activateOne(p: Person, householdId: string | null, isSub: boolean
   const renewal = plusYear(member?.renewal_date || null)
   const tierType = p.tier === 'student' ? 'Student' : 'Regular'
 
+  // Snapshot the membership BEFORE this payment, so a refund can restore it.
+  const prev = {
+    status: member?.status ?? null, renewal_date: member?.renewal_date ?? null,
+    expired_date: member?.expired_date ?? null, autorenew: member?.autorenew ?? null,
+  }
+  let memberId: string | null = member?.id ?? null
+
   if (member) {
     await db.from('members').update({
       status: 'active', renewal_date: renewal, expired_date: null, autorenew: isSub,
@@ -44,11 +53,28 @@ async function activateOne(p: Person, householdId: string | null, isSub: boolean
       household_id: householdId || member.household_id || null, updated_at: new Date().toISOString(),
     }).eq('id', member.id)
   } else if (mail) {
-    await db.from('members').insert({
+    const { data: created } = await db.from('members').insert({
       full_name: (p.name && p.name.trim()) || mail.split('@')[0], email: mail, status: 'active',
       renewal_date: renewal, autorenew: isSub, membership_type: tierType,
       stripe_customer_id: customer, stripe_subscription_id: subscription, household_id: householdId,
-    })
+    }).select('id').maybeSingle()
+    memberId = created?.id ?? null
+  }
+
+  // Record the payment with before/after snapshot (best-effort — the membership
+  // change above is what matters most; a failed record must not fail the hook).
+  if (mail || memberId) {
+    try {
+      await db.from('membership_payments').insert({
+        member_id: memberId, email: mail || null,
+        stripe_payment_intent: pay.paymentIntent, stripe_charge_id: pay.charge,
+        stripe_customer_id: customer, stripe_subscription_id: subscription,
+        amount_cents: pay.amountCents, currency: 'usd', membership_type: tierType,
+        is_subscription: isSub, billing_reason: pay.billingReason,
+        prev_status: prev.status, prev_renewal_date: prev.renewal_date, prev_expired_date: prev.expired_date, prev_autorenew: prev.autorenew,
+        new_status: 'active', new_renewal_date: renewal, new_expired_date: null, new_autorenew: isSub,
+      })
+    } catch { /* payment record is best-effort */ }
   }
 
   if (mail) {
@@ -69,13 +95,15 @@ async function activateOne(p: Person, householdId: string | null, isSub: boolean
 }
 
 // Activate everyone a payment covers (person1, and person2 if it's a couple).
-async function activateFromMeta(meta: any, isSub: boolean, customer: string | null, subscription: string | null, fallbackEmail?: string | null) {
+async function activateFromMeta(meta: any, isSub: boolean, customer: string | null, subscription: string | null, pay: PayInfo, fallbackEmail?: string | null) {
   const hh = meta?.household_id || null
-  await activateOne({ id: meta?.member_id, email: meta?.email || fallbackEmail, name: meta?.name, tier: meta?.tier }, hh, isSub, customer, subscription)
+  await activateOne({ id: meta?.member_id, email: meta?.email || fallbackEmail, name: meta?.name, tier: meta?.tier }, hh, isSub, customer, subscription, pay)
   if (meta?.member2_email || meta?.member2_id) {
-    await activateOne({ id: meta?.member2_id, email: meta?.member2_email, name: meta?.member2_name, tier: meta?.member2_tier }, hh, isSub, customer, subscription)
+    await activateOne({ id: meta?.member2_id, email: meta?.member2_email, name: meta?.member2_name, tier: meta?.member2_tier }, hh, isSub, customer, subscription, pay)
   }
 }
+// Stripe sometimes hands an id, sometimes an expanded object; keep the id.
+function idOf(v: any): string | null { return typeof v === 'string' ? v : (v?.id ?? null) }
 
 export async function POST(req: NextRequest) {
   const secret = process.env.STRIPE_WEBHOOK_SECRET
@@ -99,12 +127,14 @@ export async function POST(req: NextRequest) {
   try {
     if (event.type === 'checkout.session.completed') {
       const s = event.data.object
-      await activateFromMeta(s.metadata, !!s.subscription, s.customer, s.subscription, s.customer_details?.email || s.customer_email)
+      const pay: PayInfo = { paymentIntent: idOf(s.payment_intent), charge: null, amountCents: s.amount_total ?? null, billingReason: 'checkout' }
+      await activateFromMeta(s.metadata, !!s.subscription, idOf(s.customer), idOf(s.subscription), pay, s.customer_details?.email || s.customer_email)
     } else if (event.type === 'invoice.paid') {
       const inv = event.data.object
       if (inv.billing_reason === 'subscription_cycle' && inv.subscription) {
-        const sub = await getStripe().subscriptions.retrieve(inv.subscription)
-        await activateFromMeta(sub.metadata, true, inv.customer, inv.subscription, inv.customer_email)
+        const sub = await getStripe().subscriptions.retrieve(idOf(inv.subscription) as string)
+        const pay: PayInfo = { paymentIntent: idOf(inv.payment_intent), charge: idOf(inv.charge), amountCents: inv.amount_paid ?? null, billingReason: 'subscription_cycle' }
+        await activateFromMeta(sub.metadata, true, idOf(inv.customer), idOf(inv.subscription), pay, inv.customer_email)
       }
     } else if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
       // Keep autorenew in sync when someone cancels/re-enables in the billing portal.

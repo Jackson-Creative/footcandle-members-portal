@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { Member } from '@/types'
 import Link from 'next/link'
-import { ArrowLeft, Search, Plus, RefreshCw, Trash2, Save, X, CalendarCheck } from 'lucide-react'
+import { ArrowLeft, Search, Plus, RefreshCw, Trash2, Save, X, CalendarCheck, History } from 'lucide-react'
 
 type Editable = Partial<Member>
 
@@ -76,6 +76,19 @@ export default function MembersManager() {
     const json = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(json.error || `${method} failed`)
     return json
+  }
+
+  // One-time: reconstruct per-member email history from already-sent broadcasts.
+  async function backfillEmailHistory() {
+    if (!confirm('Rebuild email history from past sends? This reconstructs which members received earlier broadcasts (approximate) and is safe to run more than once.')) return
+    setBusy(true); setMsg(null)
+    try {
+      const { data } = await supabase.auth.getSession()
+      const res = await fetch('/api/admin/backfill-email-log', { method: 'POST', headers: { Authorization: `Bearer ${data.session?.access_token || ''}` } })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Backfill failed')
+      setMsg({ text: `Email history rebuilt — ${json.inserted} entries added across ${json.processed} past emails.`, ok: true })
+    } catch (e) { setMsg({ text: e instanceof Error ? e.message : 'Backfill failed', ok: false }) } finally { setBusy(false) }
   }
 
   const types = useMemo(
@@ -214,9 +227,14 @@ export default function MembersManager() {
           Back to Admin
         </Link>
         <h1 style={{ fontSize: 22 }}>Members</h1>
-        <button onClick={startAdd} style={s.addBtn}>
-          <Plus size={16} /> Add Member
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={backfillEmailHistory} disabled={busy} style={s.ghostHeaderBtn} title="One-time: rebuild per-member email history from past sends">
+            <History size={15} /> Rebuild email history
+          </button>
+          <button onClick={startAdd} style={s.addBtn}>
+            <Plus size={16} /> Add Member
+          </button>
+        </div>
       </header>
 
       <main style={s.main}>
@@ -311,7 +329,7 @@ export default function MembersManager() {
             <tbody>
               {filtered.map((m) => (
                 <tr key={m.id} style={{ borderBottom: '1px solid #eee' }}>
-                  <td style={s.td}>{m.full_name}</td>
+                  <td style={s.td}><Link href={`/admin/members/${m.id}`} style={s.nameLink} title="View history & payments">{m.full_name}</Link></td>
                   <td style={{ ...s.td, color: '#6b7280' }}>{m.email || '—'}</td>
                   <td style={{ ...s.td, color: '#6b7280' }}>{m.membership_type || '—'}</td>
                   <td style={s.td}><StatusBadge status={m.status} /></td>
@@ -321,6 +339,7 @@ export default function MembersManager() {
                     <button onClick={() => markRenewed(m)} disabled={busy} style={s.renewBtn} title="Mark paid in person — renew 1 year">
                       <CalendarCheck size={14} /> Renew
                     </button>
+                    <Link href={`/admin/members/${m.id}`} style={s.linkBtn} title="Payments & email history">History</Link>
                     <button onClick={() => startEdit(m)} style={s.linkBtn}>Edit</button>
                     <button onClick={() => removeMember(m)} style={s.trashBtn} title="Delete"><Trash2 size={14} /></button>
                   </td>
@@ -361,6 +380,7 @@ const s: Record<string, React.CSSProperties> = {
   header: { background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
   backLink: { display: 'flex', alignItems: 'center', gap: 8, color: 'white', textDecoration: 'none', cursor: 'pointer' },
   addBtn: { display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: 'rgba(255,255,255,0.2)', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600 },
+  ghostHeaderBtn: { display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', background: 'rgba(255,255,255,0.12)', color: 'white', border: '1px solid rgba(255,255,255,0.35)', borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: 13 },
   main: { maxWidth: 1100, margin: '32px auto', padding: '0 20px' },
   card: { background: 'white', borderRadius: 12, padding: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.1)', marginBottom: 20 },
   editHead: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
@@ -379,7 +399,8 @@ const s: Record<string, React.CSSProperties> = {
   td: { padding: '11px 14px', color: '#1f2937', verticalAlign: 'middle' },
   badge: { display: 'inline-block', padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 600 },
   renewBtn: { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', background: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0', borderRadius: 6, cursor: 'pointer', fontSize: 13, marginRight: 8 },
-  linkBtn: { background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: 13, fontWeight: 600, marginRight: 8 },
+  linkBtn: { background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: 13, fontWeight: 600, marginRight: 8, textDecoration: 'none' },
+  nameLink: { color: '#1e3f5f', fontWeight: 600, textDecoration: 'none' },
   trashBtn: { background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', verticalAlign: 'middle' },
   primaryBtn: { display: 'flex', alignItems: 'center', gap: 6, padding: '10px 18px', background: '#059669', color: 'white', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 600, cursor: 'pointer' },
   secondaryBtn: { display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px', background: '#e5e7eb', color: '#374151', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer' },

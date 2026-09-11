@@ -191,7 +191,17 @@ export async function sendQueued(id: string): Promise<number> {
     }
     sent += group.length
   }
-  await admin().from('email_queue').update({ status: 'sent', sent_at: new Date().toISOString() }).eq('id', id)
+  const sentAt = new Date().toISOString()
+  await admin().from('email_queue').update({ status: 'sent', sent_at: sentAt }).eq('id', id)
+  // Record one email_log row per recipient, so each member's page can show
+  // exactly what we sent them. Best-effort: never fail a completed send.
+  try {
+    const rows = recipients.map((ctx) => ({
+      member_id: ctx.id || null, email: ctx.email, subject: row.subject,
+      email_type: row.email_type || null, queue_id: id, source: 'send', sent_at: sentAt,
+    }))
+    if (rows.length) await admin().from('email_log').insert(rows)
+  } catch { /* logging is best-effort */ }
   return sent
 }
 
