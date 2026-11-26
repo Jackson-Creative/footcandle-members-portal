@@ -113,7 +113,7 @@ export default async function Home() {
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr)', gap: 24, alignItems: 'start' }} className="featured-grid">
               {featured.film.poster_url && (
                 <Link href={`/film/${featured.film.id}`} style={{ justifySelf: 'center', display: 'block' }}>
-                  <img src={featured.film.poster_url} alt={featured.film.title} style={{ width: '100%', maxWidth: 200, borderRadius: 10, display: 'block', boxShadow: '0 12px 32px rgba(30,63,95,0.22)' }} />
+                  <img src={featured.film.poster_url} alt={featured.film.title} className="featured-poster" style={{ width: '100%', maxWidth: 150, borderRadius: 10, display: 'block', boxShadow: '0 12px 32px rgba(30,63,95,0.22)' }} />
                 </Link>
               )}
               <div>
