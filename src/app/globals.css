@@ -14,7 +14,8 @@ body {
 
 /* Public homepage responsive helpers (inline styles set the mobile default). */
 @media (min-width: 768px) {
-  .hero-grid { grid-template-columns: 1.3fr 0.7fr !important; }
+  .featured-grid { grid-template-columns: 200px minmax(0,1fr) !important; }
+  .featured-poster { max-width: 200px !important; }
   .podcast-grid { grid-template-columns: 1fr 1fr !important; }
 }
 @media (max-width: 640px) {

@@ -38,12 +38,18 @@ npm run build   # production build + type-check
 
 Local dev needs `.env.local` (copy `.env.local.example`).
 
+In a Claude Code cloud session, server-side `fetch` won't go through the sandbox's HTTPS
+proxy by default, so pages that read Supabase at build/render time come out empty. Run
+`npm run build` / `npx next start` with `NODE_USE_ENV_PROXY=1 NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt`
+to preview with real data.
+
 ## Layout
 
 ```
 src/
   app/
-    page.tsx                     public home (upcoming screenings + community events), revalidate 60
+    page.tsx                     public home: compact next screening + row of later Film Society
+                                 screenings, then community events; revalidate 60
     film/[id], community/[id]    public detail pages, revalidate 60
     membership, filmmaker-grant-program, newmember   public pages
     login, auth/callback         Supabase auth: magic link or email+password (both offered on /login)
