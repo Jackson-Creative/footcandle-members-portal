@@ -16,6 +16,7 @@ body {
 @media (min-width: 768px) {
   .featured-grid { grid-template-columns: 200px minmax(0,1fr) !important; }
   .featured-poster { max-width: 200px !important; }
+  .films-grid { grid-template-columns: repeat(2, minmax(0,1fr)) !important; }
   .podcast-grid { grid-template-columns: 1fr 1fr !important; }
 }
 @media (max-width: 640px) {

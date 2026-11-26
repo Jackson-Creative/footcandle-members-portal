@@ -156,12 +156,12 @@ export default async function Home() {
           {more.length > 0 && (
             <div style={{ marginTop: 40 }}>
               <p style={kicker}>More Upcoming Film Society Screenings</p>
-              <div style={gridFilms}>
+              <div style={gridFilms} className="films-grid">
                 {more.map(({ film, dates }) => {
                   const places = Array.from(new Set(dates.map((d) => [d.venue, d.location_city].filter(Boolean).join(', ')).filter(Boolean)))
                   return (
                     <Link key={film.id} href={`/film/${film.id}`} style={{ ...card, padding: 14, textDecoration: 'none', color: INK, display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-                      {film.poster_url && <img src={film.poster_url} alt={film.title} style={{ width: 84, height: 'auto', borderRadius: 6, flexShrink: 0, display: 'block' }} />}
+                      {film.poster_url && <img src={film.poster_url} alt={film.title} style={{ width: 100, height: 'auto', borderRadius: 6, flexShrink: 0, display: 'block' }} />}
                       <div style={{ minWidth: 0 }}>
                         <h3 style={{ fontSize: 17, fontWeight: 800, lineHeight: 1.25 }}>{film.title}</h3>
                         <p style={{ marginTop: 6, color: BRAND, fontWeight: 700, fontSize: 14 }}>
@@ -314,7 +314,7 @@ const wrap: React.CSSProperties = { maxWidth: 1080, margin: '0 auto', padding: '
 const h1: React.CSSProperties = { fontSize: 'clamp(28px,4.5vw,42px)', fontWeight: 800, lineHeight: 1.05, letterSpacing: '-0.02em', color: INK }
 const h2: React.CSSProperties = { fontSize: 'clamp(24px,4vw,32px)', fontWeight: 800, letterSpacing: '-0.01em', color: INK }
 const kicker: React.CSSProperties = { textTransform: 'uppercase', letterSpacing: '0.16em', fontSize: 13, fontWeight: 700, color: BRAND, marginBottom: 12 }
-const gridFilms: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }
+const gridFilms: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'minmax(0,1fr)', gap: 16 }
 const clamp3: React.CSSProperties = { display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }
 const grid3: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 }
 const card: React.CSSProperties = { background: '#fff', border: '1px solid #e6eaef', borderRadius: 12, padding: 20, boxShadow: '0 1px 3px rgba(30,63,95,0.06)' }
