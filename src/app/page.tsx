@@ -32,26 +32,40 @@ function fmtLong(dateStr: string, timeStr?: string | null) {
   const [h, m] = timeStr.split(':')
   return `${day} · ${((+h + 11) % 12) + 1}:${m} ${+h >= 12 ? 'PM' : 'AM'}`
 }
+function fmtShort(dateStr: string, timeStr?: string | null) {
+  const d = new Date(dateStr + 'T00:00:00Z')
+  const day = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
+  if (!timeStr) return day
+  const [h, m] = timeStr.split(':')
+  return `${day} · ${((+h + 11) % 12) + 1}:${m} ${+h >= 12 ? 'PM' : 'AM'}`
+}
+// "Dec 8–10", "Dec 30 – Jan 2", or a single "Dec 3" for a one-night screening.
+function fmtRange(dates: DateRow[]) {
+  const md = (s: string) => new Date(s + 'T00:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+  const first = dates[0].screening_date, last = dates[dates.length - 1].screening_date
+  if (first === last) return new Date(first + 'T00:00:00Z').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' })
+  if (first.slice(0, 7) === last.slice(0, 7)) return `${md(first)}–${+last.slice(8, 10)}`
+  return `${md(first)} – ${md(last)}`
+}
 function dateKey(d: DateRow) { return d.screening_date + (d.screening_time || '') }
 
-// The featured screening = the film with the soonest upcoming date. Returns
-// that film plus ALL of its upcoming dates/locations (sorted).
-async function getFeaturedScreening(): Promise<{ film: Film; dates: DateRow[] } | null> {
+type Upcoming = { film: Film; dates: DateRow[] }
+
+// Every published film with at least one upcoming date, soonest first, each
+// with ALL of its upcoming dates/locations (sorted). The first one is the
+// featured "next screening"; the rest fill the "more upcoming" row.
+async function getUpcomingScreenings(): Promise<Upcoming[]> {
   const { data, error } = await supabase
     .from('film_screenings')
     .select('id,title,description,poster_url,rating,running_time,screening_dates(*)')
     .eq('published', true)
-  if (error || !data) return null
-  let best: { film: Film; soonest: string } | null = null
+  if (error || !data) return []
+  const out: Upcoming[] = []
   for (const f of data as Film[]) {
-    const upcoming = (f.screening_dates || []).filter((d) => d.screening_date >= today())
-    if (!upcoming.length) continue
-    const soonest = upcoming.map((d) => d.screening_date).sort()[0]
-    if (!best || soonest < best.soonest) best = { film: f, soonest }
+    const dates = (f.screening_dates || []).filter((d) => d.screening_date >= today()).sort((a, b) => dateKey(a).localeCompare(dateKey(b)))
+    if (dates.length) out.push({ film: f, dates })
   }
-  if (!best) return null
-  const dates = (best.film.screening_dates || []).filter((d) => d.screening_date >= today()).sort((a, b) => dateKey(a).localeCompare(dateKey(b)))
-  return { film: best.film, dates }
+  return out.sort((a, b) => dateKey(a.dates[0]).localeCompare(dateKey(b.dates[0])))
 }
 async function getCommunityEvents(): Promise<Community[]> {
   const { data, error } = await supabase.from('community_events').select('*').eq('published', true).gte('event_date', today()).order('event_date').limit(6)
@@ -60,9 +74,9 @@ async function getCommunityEvents(): Promise<Community[]> {
 }
 
 // Small "Closed Captioned" indicator shown under a screening that has captions.
-function CCBadge() {
+function CCBadge({ compact }: { compact?: boolean }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 12, fontWeight: 700, color: '#8a5a00', background: '#fdf0d5', border: '1px solid #e6b34d', borderRadius: 6, padding: '3px 9px', letterSpacing: 0.2 }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: compact ? 0 : 8, fontSize: 12, fontWeight: 700, color: '#8a5a00', background: '#fdf0d5', border: '1px solid #e6b34d', borderRadius: 6, padding: '3px 9px', letterSpacing: 0.2 }}>
       <span style={{ fontWeight: 800, background: '#8a5a00', color: '#fdf0d5', borderRadius: 3, padding: '0 4px', fontSize: 11, lineHeight: '16px' }}>CC</span>
       Closed Captioned
     </span>
@@ -70,7 +84,9 @@ function CCBadge() {
 }
 
 export default async function Home() {
-  const [featured, community] = await Promise.all([getFeaturedScreening(), getCommunityEvents()])
+  const [upcoming, community] = await Promise.all([getUpcomingScreenings(), getCommunityEvents()])
+  const featured = upcoming[0] || null
+  const more = upcoming.slice(1, 7)
 
   return (
     <div style={{ background: '#fff', color: INK, minHeight: '100vh' }}>
@@ -88,37 +104,40 @@ export default async function Home() {
         </div>
       </nav>
 
-      {/* Hero — featured film with ALL its dates/locations */}
+      {/* Hero — compact "next screening" (soonest film, ALL its dates), then a
+          row of the Film Society's later screenings */}
       <section style={{ background: `linear-gradient(180deg, ${TINT}, #fff)` }}>
-        <div style={{ ...wrap, paddingTop: 56, paddingBottom: 56 }}>
+        <div style={{ ...wrap, paddingTop: 40, paddingBottom: 44 }}>
           <p style={kicker}>Next Film Society Screening</p>
           {featured ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr)', gap: 28, alignItems: 'start' }} className="hero-grid">
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr)', gap: 24, alignItems: 'start' }} className="featured-grid">
+              {featured.film.poster_url && (
+                <Link href={`/film/${featured.film.id}`} style={{ justifySelf: 'center', display: 'block' }}>
+                  <img src={featured.film.poster_url} alt={featured.film.title} style={{ width: '100%', maxWidth: 200, borderRadius: 10, display: 'block', boxShadow: '0 12px 32px rgba(30,63,95,0.22)' }} />
+                </Link>
+              )}
               <div>
                 <h1 style={h1}>{featured.film.title}</h1>
                 {(featured.film.rating || featured.film.running_time) && (
-                  <p style={{ marginTop: 8, color: MUTED, fontSize: 15 }}>{[featured.film.rating, featured.film.running_time].filter(Boolean).join(' · ')}</p>
+                  <p style={{ marginTop: 6, color: MUTED, fontSize: 14 }}>{[featured.film.rating, featured.film.running_time].filter(Boolean).join(' · ')}</p>
                 )}
-                {featured.film.description && <p style={{ marginTop: 14, color: '#374151', maxWidth: 560, lineHeight: 1.65 }}>{featured.film.description}</p>}
+                {featured.film.description && <p style={{ marginTop: 10, color: '#374151', maxWidth: 620, lineHeight: 1.6, ...clamp3 }}>{featured.film.description}</p>}
 
-                <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 620 }}>
                   {featured.dates.map((d, i) => (
-                    <div key={i} style={{ background: '#fff', border: '1px solid #dbe3ec', borderRadius: 10, padding: '12px 14px' }}>
-                      <div style={{ fontWeight: 700, color: BRAND }}>{fmtLong(d.screening_date, d.screening_time)}</div>
-                      <div style={{ color: MUTED, fontSize: 14, marginTop: 2 }}>
-                        {[d.venue, d.location_city].filter(Boolean).join(' · ')}{d.address ? ` — ${d.address}` : ''}
-                      </div>
-                      {d.closed_captioned && <CCBadge />}
+                    <div key={i} style={{ background: '#fff', border: '1px solid #dbe3ec', borderRadius: 8, padding: '8px 12px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 10, rowGap: 4, fontSize: 14 }}>
+                      <span style={{ fontWeight: 700, color: BRAND }}>{fmtShort(d.screening_date, d.screening_time)}</span>
+                      <span style={{ color: MUTED }}>{[d.venue, d.location_city].filter(Boolean).join(' · ')}</span>
+                      {d.closed_captioned && <CCBadge compact />}
                     </div>
                   ))}
                 </div>
 
-                <div style={{ marginTop: 22, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                  <Link href={`/film/${featured.film.id}`} style={btnPrimaryLg}>About this Screening</Link>
-                  <Link href="/membership" style={btnOutlineLg}>Become a member</Link>
+                <div style={{ marginTop: 18, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  <Link href={`/film/${featured.film.id}`} style={btnPrimary}>About this Screening</Link>
+                  <Link href="/membership" style={btnOutline}>Become a member</Link>
                 </div>
               </div>
-              {featured.film.poster_url && <img src={featured.film.poster_url} alt={featured.film.title} style={{ width: '100%', maxWidth: 320, borderRadius: 12, justifySelf: 'center', boxShadow: '0 16px 44px rgba(30,63,95,0.25)' }} />}
             </div>
           ) : (
             <div>
@@ -130,6 +149,31 @@ export default async function Home() {
               <div style={{ marginTop: 24, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                 <Link href="/membership" style={btnPrimaryLg}>Become a member</Link>
                 <a href={PODCAST_APPLE} target="_blank" rel="noopener noreferrer" style={btnOutlineLg}>Listen to the podcast</a>
+              </div>
+            </div>
+          )}
+
+          {more.length > 0 && (
+            <div style={{ marginTop: 40 }}>
+              <p style={kicker}>More Upcoming Film Society Screenings</p>
+              <div style={gridFilms}>
+                {more.map(({ film, dates }) => {
+                  const places = Array.from(new Set(dates.map((d) => [d.venue, d.location_city].filter(Boolean).join(', ')).filter(Boolean)))
+                  return (
+                    <Link key={film.id} href={`/film/${film.id}`} style={{ ...card, padding: 14, textDecoration: 'none', color: INK, display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+                      {film.poster_url && <img src={film.poster_url} alt={film.title} style={{ width: 84, height: 'auto', borderRadius: 6, flexShrink: 0, display: 'block' }} />}
+                      <div style={{ minWidth: 0 }}>
+                        <h3 style={{ fontSize: 17, fontWeight: 800, lineHeight: 1.25 }}>{film.title}</h3>
+                        <p style={{ marginTop: 6, color: BRAND, fontWeight: 700, fontSize: 14 }}>
+                          {fmtRange(dates)} · {dates.length} {dates.length === 1 ? 'screening' : 'screenings'}
+                        </p>
+                        {places.length > 0 && <p style={{ marginTop: 2, color: MUTED, fontSize: 13, lineHeight: 1.45 }}>{places.join(' · ')}</p>}
+                        {dates.some((d) => d.closed_captioned) && <div style={{ marginTop: 8 }}><CCBadge compact /></div>}
+                        <span style={{ display: 'inline-block', marginTop: 8, color: BRAND, fontWeight: 700, fontSize: 13 }}>Details &rarr;</span>
+                      </div>
+                    </Link>
+                  )
+                })}
               </div>
             </div>
           )}
@@ -267,9 +311,11 @@ function SectionHead({ title, sub }: { title: string; sub?: string }) {
 }
 
 const wrap: React.CSSProperties = { maxWidth: 1080, margin: '0 auto', padding: '60px 24px' }
-const h1: React.CSSProperties = { fontSize: 'clamp(34px,6vw,58px)', fontWeight: 800, lineHeight: 1.05, letterSpacing: '-0.02em', color: INK }
+const h1: React.CSSProperties = { fontSize: 'clamp(28px,4.5vw,42px)', fontWeight: 800, lineHeight: 1.05, letterSpacing: '-0.02em', color: INK }
 const h2: React.CSSProperties = { fontSize: 'clamp(24px,4vw,32px)', fontWeight: 800, letterSpacing: '-0.01em', color: INK }
 const kicker: React.CSSProperties = { textTransform: 'uppercase', letterSpacing: '0.16em', fontSize: 13, fontWeight: 700, color: BRAND, marginBottom: 12 }
+const gridFilms: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }
+const clamp3: React.CSSProperties = { display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }
 const grid3: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 }
 const card: React.CSSProperties = { background: '#fff', border: '1px solid #e6eaef', borderRadius: 12, padding: 20, boxShadow: '0 1px 3px rgba(30,63,95,0.06)' }
 const emptyBox: React.CSSProperties = { border: '1px dashed #cfd8e3', borderRadius: 12, padding: '32px 20px', color: MUTED, textAlign: 'center', background: '#fafbfc' }
