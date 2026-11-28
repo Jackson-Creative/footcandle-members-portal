@@ -19,6 +19,7 @@ export default function MembershipPage() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [message, setMessage] = useState('')
+  const [company, setCompany] = useState('') // spam trap (hidden)
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
   const [error, setError] = useState('')
@@ -32,7 +33,7 @@ export default function MembershipPage() {
       const res = await fetch('/api/membership-interest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, message }),
+        body: JSON.stringify({ name, email, message, company }),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error || 'Something went wrong')
@@ -111,6 +112,10 @@ export default function MembershipPage() {
                 <h2 style={h2}>Interested in joining?</h2>
                 <p style={{ marginTop: 8, color: MUTED, lineHeight: 1.55 }}>Tell us who you are and we'll follow up shortly with everything you need to become a member.</p>
                 <form onSubmit={submit} style={{ marginTop: 20 }}>
+                  {/* Spam trap: hidden from people, often filled in by bots. */}
+                  <div aria-hidden="true" style={{ position: 'absolute', left: -10000, top: 'auto', width: 1, height: 1, overflow: 'hidden' }}>
+                    <label>Company<input tabIndex={-1} autoComplete="off" value={company} onChange={(e) => setCompany(e.target.value)} /></label>
+                  </div>
                   <label style={label}>Your name</label>
                   <input value={name} onChange={(e) => setName(e.target.value)} placeholder="First and last name" required style={input} />
                   <label style={label}>Email address</label>

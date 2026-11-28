@@ -205,6 +205,18 @@ export async function sendQueued(id: string): Promise<number> {
   return sent
 }
 
+// Send one already-rendered HTML email straight to one address (no queue
+// row, no logging). Used for template test sends.
+export async function sendDirect(to: string, subject: string, html: string, text: string): Promise<void> {
+  if (!BREVO_API_KEY) throw new Error('Server is missing BREVO_API_KEY.')
+  const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: { 'api-key': BREVO_API_KEY, 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ sender: { name: SENDER_NAME, email: SENDER_EMAIL }, subject, htmlContent: html, textContent: text || subject, to: [{ email: to }] }),
+  })
+  if (!res.ok) throw new Error(`Brevo error (${res.status}): ${await res.text()}`)
+}
+
 // Send a queued email to ONE test address only (does not touch the row's
 // status or audience). Personalizes using that address's member record if any.
 export async function sendQueuedTest(id: string, testEmail: string): Promise<number> {

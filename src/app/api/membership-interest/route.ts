@@ -11,7 +11,10 @@ export async function POST(req: NextRequest) {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return NextResponse.json({ error: 'Server is not configured to receive submissions yet.' }, { status: 500 })
   }
-  const { name, email, message } = await req.json().catch(() => ({}))
+  const { name, email, message, company } = await req.json().catch(() => ({}))
+  // Spam trap: real visitors never see or fill the hidden "company" field.
+  // Pretend success so bots don't learn anything.
+  if (String(company || '').trim()) return NextResponse.json({ ok: true })
   const cleanName = String(name || '').trim()
   const cleanEmail = String(email || '').trim().toLowerCase()
   if (!cleanName || !cleanEmail.includes('@')) {

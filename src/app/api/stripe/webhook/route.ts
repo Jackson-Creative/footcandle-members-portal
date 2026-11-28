@@ -129,6 +129,10 @@ export async function POST(req: NextRequest) {
       const s = event.data.object
       const pay: PayInfo = { paymentIntent: idOf(s.payment_intent), charge: null, amountCents: s.amount_total ?? null, billingReason: 'checkout' }
       await activateFromMeta(s.metadata, !!s.subscription, idOf(s.customer), idOf(s.subscription), pay, s.customer_details?.email || s.customer_email)
+      // Joined from an invitation email: close out that prospect (best-effort).
+      if (s.metadata?.inquiry_id) {
+        try { await admin().from('membership_inquiries').update({ joined_at: new Date().toISOString(), handled: true }).eq('id', s.metadata.inquiry_id) } catch { /* ignore */ }
+      }
     } else if (event.type === 'invoice.paid') {
       const inv = event.data.object
       if (inv.billing_reason === 'subscription_cycle' && inv.subscription) {
