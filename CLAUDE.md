@@ -58,7 +58,8 @@ src/
     admin/                       admin area; layout.tsx gates the UI with isAdmin()
       members, members/[id]      list (sortable) + profile (payments, refunds, email history)
       film-screenings(/manage), community-events, announcements,
-      compose, email-queue, newsletter, renewal-reminders, membership-inquiries
+      compose, email-queue, newsletter, renewal-reminders,
+      membership-inquiries       new-member funnel: invite prospects, import a list, edit invitation text
     api/                         server routes (see below)
   lib/
     supabase.ts        browser client (anon key) + auth helpers
@@ -68,6 +69,8 @@ src/
     stripe.ts          lazy Stripe client + TIERS (regular $50, student $25; Founders are comp)
     renewToken.ts      HMAC-signed member tokens for passwordless /renew?t= links
     benefits.ts        single source of truth for membership benefits copy
+    invite.ts          new-member invitation funnel: editable templates (email_templates),
+                       signed /newmember?invite= links, live dues/screenings blocks, 10-day follow-ups
   types/index.ts       Member, CommunityEvent, Event, CheckIn, Announcement
 ```
 
@@ -95,6 +98,16 @@ src/
   (households share an address). Merge fields like `{{first_name}}`, `{{expired_date}}`,
   `{{renew_button}}`. Every send writes `email_log` rows per recipient.
 
+## New-member funnel
+
+Prospect → `membership_inquiries` (website form via `/api/membership-interest`, with a hidden
+`company` spam trap; or pasted list) → admin reviews and sends the invitation (Membership
+Inquiries page → `/api/admin/membership-invites`) → personal `/newmember?invite=<token>` link
+pre-fills the form (`/api/invite-context`) → checkout carries `inquiry_id` → webhook marks the
+inquiry `joined_at`. Prospects who haven't joined get one follow-up after 10 days. The
+invitation must contain `{{next_screening}}`: the next *standard monthly* screening, detected as
+the soonest non-OBSCURA film that plays on 2+ days.
+
 ## Payments flow (Stripe)
 
 1. `/renew` (existing member — session or `?t=` token) → `POST /api/checkout`;
@@ -115,7 +128,7 @@ src/
 
 | Route | Schedule (UTC) | Notes |
 |---|---|---|
-| `/api/cron/renewal-reminders` | `0 14 * * *` daily | 30- and 7-day reminders; skips live Stripe auto-renew subscribers |
+| `/api/cron/renewal-reminders` | `0 14 * * *` daily | 30- and 7-day reminders; skips live Stripe auto-renew subscribers. Also sends the 10-day invitation follow-ups (`sendInviteFollowups`) |
 | `/api/cron/digest` | `0 14 * * 2` Tuesdays | sends only on the first Tuesday of the month; `?force=1` to test |
 
 Both require `Authorization: Bearer $CRON_SECRET` (Vercel Cron sends it automatically).
@@ -125,12 +138,13 @@ Both require `Authorization: Bearer $CRON_SECRET` (Vercel Cron sends it automati
 Tables used by this app: `members`, `film_screenings`, `screening_dates`
 (per-showtime, incl. `closed_captioned`), `community_events`, `admin_notes`
 (announcements), `email_queue`, `email_log`, `membership_payments`,
-`membership_inquiries`, `stripe_events`, `checkins` (+ `events`, owned by the check-in app).
+`membership_inquiries` (+ funnel columns `source`, `invited_at`, `followup_sent_at`, `joined_at`),
+`email_templates` (editable invitation text), `stripe_events`, `checkins` (+ `events`, owned by the check-in app).
 Storage bucket: `film-posters` (public; used for film and community-event posters).
 
-**The schema / RLS policies are not in this repo.** Changes to tables are made in the
-Supabase dashboard. If you add columns, tell the user the exact SQL to run. TODO: commit
-a schema dump under `supabase/`.
+**The full schema / RLS policies are not in this repo.** Changes to tables are made in the
+Supabase dashboard. If you add columns, put the SQL in `supabase/<feature>.sql` and tell the
+user to run it (e.g. `supabase/membership-invites.sql`). TODO: commit a full schema dump.
 
 `members` is shared with the check-in app, which upserts on `full_name` from Eventive
 CSV/sync. Be careful with changes to `members` columns or uniqueness.

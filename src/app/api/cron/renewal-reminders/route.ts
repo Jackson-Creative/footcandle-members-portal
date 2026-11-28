@@ -1,9 +1,12 @@
 // ════════════════════════════════════════════════════════════════════
 // Scheduled: renewal reminders at 30 and 7 days before renewal_date.
 // Run daily by Vercel Cron. Protected by CRON_SECRET.
+// Also sends the 10-day follow-up to invited prospects who haven't joined
+// (lib/invite), so that needs no cron of its own.
 // ════════════════════════════════════════════════════════════════════
 import { NextRequest, NextResponse } from 'next/server'
 import { admin, queueEmail, sendQueued } from '@/lib/email'
+import { sendInviteFollowups } from '@/lib/invite'
 
 function authorized(req: NextRequest) {
   const secret = process.env.CRON_SECRET
@@ -57,7 +60,10 @@ export async function GET(req: NextRequest) {
       const sent = await sendQueued(id)
       results.push({ days, sent })
     }
-    return NextResponse.json({ ok: true, results })
+    // Invitation follow-ups — isolated so a problem here never blocks reminders.
+    let followups: any
+    try { followups = await sendInviteFollowups() } catch (e) { followups = { error: e instanceof Error ? e.message : 'failed' } }
+    return NextResponse.json({ ok: true, results, followups })
   } catch (e) {
     return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : 'failed', results }, { status: 500 })
   }

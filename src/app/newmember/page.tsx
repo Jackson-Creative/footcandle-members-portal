@@ -30,12 +30,28 @@ export default function NewMemberPage() {
   const [secondEmail, setSecondEmail] = useState('')
   const [secondTier, setSecondTier] = useState<Tier>('regular')
   const [canceled, setCanceled] = useState(false)
+  const [invite, setInvite] = useState('') // signed token from an invitation email
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   const total = PRICE[tier] + (addSecond ? PRICE[secondTier] : 0)
 
-  useEffect(() => { setCanceled(new URLSearchParams(window.location.search).get('canceled') === '1') }, [])
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search)
+    setCanceled(q.get('canceled') === '1')
+    // Arrived from an invitation email: pre-fill their name + email.
+    const t = q.get('invite')
+    if (!t) return
+    setInvite(t)
+    fetch(`/api/invite-context?t=${encodeURIComponent(t)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!j) return
+        if (j.name) setName((v) => v || j.name)
+        if (j.email) setEmail((v) => v || j.email)
+      })
+      .catch(() => {})
+  }, [])
 
   async function checkout() {
     setError('')
@@ -47,7 +63,7 @@ export default function NewMemberPage() {
       const res = await fetch('/api/checkout-new', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, tier, mode, second: addSecond ? { name: secondName, email: secondEmail, tier: secondTier } : undefined }),
+        body: JSON.stringify({ name, email, tier, mode, invite: invite || undefined, second: addSecond ? { name: secondName, email: secondEmail, tier: secondTier } : undefined }),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok || !json.url) throw new Error(json.error || 'Could not start checkout')

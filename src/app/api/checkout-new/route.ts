@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getStripe, TIERS } from '@/lib/stripe'
 import { SUPABASE_URL, SUPABASE_ANON } from '@/lib/supabaseConfig'
+import { inquiryIdFromToken } from '@/lib/invite'
 
 export const runtime = 'nodejs'
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://members.footcandle.org'
@@ -25,7 +26,7 @@ async function memberIdForEmail(email: string) {
 export async function POST(req: NextRequest) {
   if (!process.env.STRIPE_SECRET_KEY) return NextResponse.json({ error: 'Payments are not configured yet.' }, { status: 500 })
 
-  const { name, email, tier, mode, second } = await req.json().catch(() => ({}))
+  const { name, email, tier, mode, second, invite } = await req.json().catch(() => ({}))
   const cleanName = String(name || '').trim()
   const cleanEmail = String(email || '').trim().toLowerCase()
   if (!cleanName || !cleanEmail.includes('@')) return NextResponse.json({ error: 'Please enter your name and a valid email.' }, { status: 400 })
@@ -39,6 +40,9 @@ export async function POST(req: NextRequest) {
 
   const line_items = [lineItem(tier, mode)]
   const metadata: Record<string, string> = { member_id: await memberIdForEmail(cleanEmail), tier, mode, email: cleanEmail, name: cleanName, new_member: 'true' }
+  // Came from an invitation email? The webhook marks that prospect as joined.
+  const inquiryId = inquiryIdFromToken(invite)
+  if (inquiryId) metadata.inquiry_id = inquiryId
   if (hasSecond) {
     line_items.push(lineItem(secondTier, mode))
     metadata.household_id = (globalThis.crypto as any).randomUUID()
@@ -54,7 +58,7 @@ export async function POST(req: NextRequest) {
       line_items,
       customer_email: cleanEmail,
       success_url: `${SITE_URL}/renew/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${SITE_URL}/newmember?canceled=1`,
+      cancel_url: `${SITE_URL}/newmember?canceled=1${inquiryId ? `&invite=${encodeURIComponent(String(invite))}` : ''}`,
       metadata,
       ...(mode === 'subscription' ? { subscription_data: { metadata } } : {}),
     })
